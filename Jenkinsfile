@@ -14,8 +14,9 @@ pipeline {
   }
 
   triggers {
-    githubPush()
-    cron('H 14 * * *')
+  githubPush()
+  cron('''TZ=Asia/Yangon
+    15 3 * * *''')
   }
 
   stages {
