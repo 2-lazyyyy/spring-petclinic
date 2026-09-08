@@ -60,6 +60,10 @@ dependencies {
 
 tasks.named('test') {
   useJUnitPlatform()
+  // The classroom CI demo uses the default H2 database. External database
+  // integration tests remain in source for optional, profile-specific runs.
+  exclude '**/MySqlIntegrationTests.class'
+  exclude '**/PostgresIntegrationTests.class'
 }
 
 tasks.named("cyclonedxDirectBom").configure {

@@ -71,7 +71,7 @@ flowchart LR
 | Jenkins agent port | Host port 50000 | Retained for standard Jenkins compatibility; no external agent is required for this demo. |
 | Webhook endpoint | `<temporary-tunnel-url>/github-webhook/` | The generated URL is copied into the GitHub webhook configuration before the demo. |
 
-Jenkins and the tunnel run on a dedicated Docker Compose network. Jenkins data uses a named Docker volume so jobs and build history survive container restarts. The application uses the host JDK 17 for the local UI demo, while the Jenkins image contains JDK 17 for CI builds.
+Jenkins and the tunnel run on a dedicated Docker Compose network. Jenkins data uses a named Docker volume so jobs and build history survive container restarts. The application uses the host JDK 17 for the local UI demo. The custom Jenkins image runs the security-fixed controller on JDK 21 and includes a separate JDK 17 at `/opt/java17` for every PetClinic Gradle build.
 
 ## Repository layout
 
@@ -101,9 +101,9 @@ The existing application source, Gradle configuration, and tests remain the sour
 
 ## Jenkins provisioning
 
-A custom Jenkins image based on the Jenkins LTS JDK 17 image installs a pinned set of plugins at image-build time:
+A custom Jenkins image based on Jenkins LTS 2.568.3 with JDK 21 adds a separate Eclipse Temurin JDK 17 for application builds and installs the selected plugins at image-build time:
 
-- Pipeline aggregator
+- Declarative Pipeline and the basic, durable-task, and SCM Pipeline steps
 - Git and GitHub integration
 - GitHub Branch Source
 - JUnit result publishing

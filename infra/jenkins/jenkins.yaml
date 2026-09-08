@@ -1,0 +1,44 @@
+jenkins:
+  systemMessage: "PetClinic Jenkins + Gradle CI Demo\n"
+  numExecutors: 2
+  mode: NORMAL
+  slaveAgentPort: 50000
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "${JENKINS_ADMIN_ID}"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+  remotingSecurity:
+    enabled: true
+
+unclassified:
+  location:
+    url: "http://localhost:8081/"
+
+jobs:
+  - script: >
+      pipelineJob('petclinic-ci') {
+        description('Build, test, report, and package PetClinic with the Gradle Wrapper.')
+        logRotator {
+          numToKeep(20)
+          artifactNumToKeep(10)
+        }
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote {
+                  url(System.getenv('PETCLINIC_REPO_URL'))
+                }
+                branch('*/main')
+              }
+            }
+            scriptPath('Jenkinsfile')
+            lightweight()
+          }
+        }
+      }

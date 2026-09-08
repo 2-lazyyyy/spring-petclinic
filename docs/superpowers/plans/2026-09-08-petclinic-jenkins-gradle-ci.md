@@ -4,9 +4,9 @@
 
 **Goal:** Produce a repeatable classroom demo in which a push to a public PetClinic GitHub repository triggers Docker-hosted Jenkins, Jenkins runs the Gradle Wrapper, publishes UI-visible test reports, and archives the executable Spring Boot JAR.
 
-**Architecture:** Keep the official single-module Spring Boot PetClinic application and H2 data store, remove Maven and GitHub Actions from our copy, and add a repository-root Jenkins Pipeline. Docker Compose runs a JDK 17 Jenkins controller and a temporary Cloudflare tunnel; Jenkins Configuration as Code and Job DSL create the secured controller and Pipeline job from environment-supplied values.
+**Architecture:** Keep the official single-module Spring Boot PetClinic application and H2 data store, remove Maven and GitHub Actions from our copy, and add a repository-root Jenkins Pipeline. Docker Compose runs the security-fixed Jenkins LTS 2.568.3 controller on JDK 21, supplies a separate JDK 17 for application builds, and runs a temporary Cloudflare tunnel; Jenkins Configuration as Code and Job DSL create the secured controller and Pipeline job from environment-supplied values.
 
-**Tech Stack:** Java 17, Spring Boot 4.1, Gradle Wrapper 9.5.1, JUnit 5, Jenkins LTS JDK 17, Jenkins Pipeline/JUnit/HTML Publisher/Pipeline Graph View/JCasC/Job DSL plugins, Docker Compose, Cloudflare Quick Tunnel, Git, public GitHub repository, H2.
+**Tech Stack:** Java 17 application toolchain, Spring Boot 4.1, Gradle Wrapper 9.5.1, JUnit 5, Jenkins LTS 2.568.3 on JDK 21, Jenkins Pipeline/JUnit/HTML Publisher/Pipeline Graph View/JCasC/Job DSL plugins, Docker Compose, Cloudflare Quick Tunnel, Git, public GitHub repository, H2.
 
 **Spec:** `docs/superpowers/specs/2026-09-08-petclinic-jenkins-gradle-ci-design.md`
 
@@ -31,7 +31,7 @@
 |---|---|
 | `src/test/java/org/springframework/samples/petclinic/ci/CiConfigurationTests.java` | Test-first contract for the build-tool policy, Pipeline, Docker/Jenkins files, secrets policy, and documentation. |
 | `Jenkinsfile` | Defines push and daily triggers, visible Pipeline stages, Gradle tasks, reports, and artifact archival. |
-| `infra/jenkins/Dockerfile` | Builds the JDK 17 Jenkins image and installs the selected plugins. |
+| `infra/jenkins/Dockerfile` | Builds the Jenkins LTS 2.568.3 image, adds the PetClinic JDK 17, and installs the selected plugins. |
 | `infra/jenkins/plugins.txt` | Declares Jenkins plugins installed at image-build time. |
 | `infra/jenkins/jenkins.yaml` | Configures Jenkins security, location, executors, and the `petclinic-ci` Pipeline job. |
 | `docker-compose.jenkins.yml` | Runs persistent Jenkins and the temporary Cloudflare tunnel on an isolated network. |
@@ -212,6 +212,11 @@ Expected: FAIL with `Jenkinsfile must exist`.
 pipeline {
   agent any
 
+  environment {
+    JAVA_HOME = '/opt/java17'
+    PATH = "/opt/java17/bin:${env.PATH}"
+  }
+
   options {
     timestamps()
     disableConcurrentBuilds()
@@ -319,7 +324,7 @@ git commit -m "ci: add Jenkins Gradle pipeline"
 
 **Interfaces:**
 - Consumes: `JENKINS_ADMIN_ID`, `JENKINS_ADMIN_PASSWORD`, and `PETCLINIC_REPO_URL` environment variables.
-- Produces: image `petclinic-jenkins:lts-jdk17`, secured Jenkins configuration, and Pipeline job `petclinic-ci` loading `Jenkinsfile` from `*/main`.
+- Produces: image `petclinic-jenkins:2.568.3`, secured Jenkins configuration, and Pipeline job `petclinic-ci` loading `Jenkinsfile` from `*/main`.
 
 - [ ] **Step 1: Add the failing Jenkins provisioning contract**
 
@@ -336,7 +341,7 @@ Add this method inside `CiConfigurationTests`:
 		assertTrue(Files.isRegularFile(cascFile), "Jenkins JCasC file must exist");
 
 		String plugins = Files.readString(pluginsFile);
-		List<String> requiredPlugins = List.of("workflow-aggregator", "git", "github", "github-branch-source",
+		List<String> requiredPlugins = List.of("pipeline-model-definition", "workflow-basic-steps", "workflow-durable-task-step", "workflow-scm-step", "git", "github", "github-branch-source",
 				"junit", "htmlpublisher", "pipeline-graph-view", "configuration-as-code", "job-dsl");
 		assertTrue(requiredPlugins.stream().allMatch(plugins::contains), "Every reporting and provisioning plugin is required");
 
@@ -361,7 +366,10 @@ Expected: FAIL because the three `infra/jenkins` files do not exist.
 
 ```text
 configuration-as-code
-workflow-aggregator
+pipeline-model-definition
+workflow-basic-steps
+workflow-durable-task-step
+workflow-scm-step
 git
 github
 github-branch-source
@@ -374,12 +382,15 @@ job-dsl
 - [ ] **Step 4: Create `infra/jenkins/Dockerfile`**
 
 ```dockerfile
-FROM jenkins/jenkins:lts-jdk17
+FROM eclipse-temurin:17-jdk AS java17
+
+FROM jenkins/jenkins:2.568.3-lts-jdk21
 
 USER root
-RUN apt-get update \
-    && apt-get install --yes --no-install-recommends curl git \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=java17 /opt/java/openjdk /opt/java17
+RUN test -x /opt/java17/bin/java \
+    && git --version \
+    && curl --version
 
 USER jenkins
 COPY --chown=jenkins:jenkins infra/jenkins/plugins.txt /usr/share/jenkins/ref/plugins.txt
@@ -447,7 +458,7 @@ Expected: PASS.
 - [ ] **Step 7: Build the custom Jenkins image**
 
 ```powershell
-docker build --file infra/jenkins/Dockerfile --tag petclinic-jenkins:lts-jdk17 .
+docker build --file infra/jenkins/Dockerfile --tag petclinic-jenkins:2.568.3 .
 ```
 
 Expected: image build succeeds and `jenkins-plugin-cli` resolves all selected plugins.
@@ -534,7 +545,7 @@ services:
     build:
       context: .
       dockerfile: infra/jenkins/Dockerfile
-    image: petclinic-jenkins:lts-jdk17
+    image: petclinic-jenkins:2.568.3
     container_name: petclinic-jenkins
     restart: unless-stopped
     ports:
@@ -546,6 +557,7 @@ services:
       JENKINS_ADMIN_ID: "${JENKINS_ADMIN_ID}"
       JENKINS_ADMIN_PASSWORD: "${JENKINS_ADMIN_PASSWORD}"
       PETCLINIC_REPO_URL: "${PETCLINIC_REPO_URL}"
+      JAVA17_HOME: "/opt/java17"
     volumes:
       - jenkins_home:/var/jenkins_home
       - ./infra/jenkins/jenkins.yaml:/var/jenkins_home/casc_configs/jenkins.yaml:ro

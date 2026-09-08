@@ -1,0 +1,12 @@
+configuration-as-code
+pipeline-model-definition
+workflow-basic-steps
+workflow-durable-task-step
+workflow-scm-step
+git
+github
+github-branch-source
+junit
+htmlpublisher
+pipeline-graph-view
+job-dsl
